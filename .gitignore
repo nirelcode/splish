@@ -41,3 +41,8 @@ app-example
 # generated native folders
 /ios
 /android
+
+# Module build artifacts
+modules/**/build/
+modules/**/.cxx/
+modules/**/.gradle/

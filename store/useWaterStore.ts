@@ -35,6 +35,26 @@ export interface WaterState {
   streak: number;
   lastStreakDate: string | null;
 
+  // Persistence for goal celebration
+  skyDismissed: boolean;
+  
+  // Customization
+  skin?: string;
+  theme?: string;
+
+  // Hard Mode
+  hardMode: boolean;
+  hardModeSetupDone: boolean;       // whether wizard was completed at least once
+  hardModePendingAt: number | null; // timestamp when 10-min timer started
+  setHardMode: (val: boolean) => void;
+  setHardModeSetupDone: (val: boolean) => void;
+  triggerHardModePending: () => void;
+  clearHardModePending: () => void;
+
+  // Developer options
+  showMinusButton: boolean;
+  setShowMinusButton: (val: boolean) => void;
+
   // Actions
   setOnboarding: (data: Partial<Pick<WaterState,
     'gender' | 'age' | 'weightKg' | 'activity' | 'climate' | 'currentDrink' | 'dailyGoalMl' | 'mainGoal'
@@ -48,6 +68,9 @@ export interface WaterState {
   resetDay: () => void;
   setDailyGoal: (ml: number) => void;
   checkStreak: () => void;
+  setSkyDismissed: (val: boolean) => void;
+  setSkin: (skin: string) => void;
+  setTheme: (theme: string) => void;
   reset: () => void;
 }
 
@@ -120,6 +143,13 @@ export const useWaterStore = create<WaterState>()(
       log: {},
       streak: 0,
       lastStreakDate: null,
+      skyDismissed: false,
+      skin: 'default',
+      theme: 'ocean',
+      hardMode: false,
+      hardModeSetupDone: false,
+      hardModePendingAt: null,
+      showMinusButton: false,
 
       setOnboarding: (data) => {
         set((s) => {
@@ -182,6 +212,15 @@ export const useWaterStore = create<WaterState>()(
         }
       },
 
+      setSkyDismissed: (val) => set({ skyDismissed: val }),
+      setSkin: (skin) => set({ skin }),
+      setTheme: (theme) => set({ theme }),
+      setHardMode: (val) => set({ hardMode: val }),
+      setHardModeSetupDone: (val) => set({ hardModeSetupDone: val }),
+      triggerHardModePending: () => set({ hardModePendingAt: Date.now() }),
+      clearHardModePending: () => set({ hardModePendingAt: null }),
+      setShowMinusButton: (val) => set({ showMinusButton: val }),
+
       reset: () => set({
         onboardingDone: false,
         name: null,
@@ -190,6 +229,8 @@ export const useWaterStore = create<WaterState>()(
         mainGoal: null,
         dailyGoalMl: 2100,
         log: {}, streak: 0, lastStreakDate: null,
+        skin: 'default',
+        theme: 'ocean',
       }),
     }),
     {

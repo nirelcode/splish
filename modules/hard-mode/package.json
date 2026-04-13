@@ -1,0 +1,9 @@
+{
+  "name": "hard-mode",
+  "version": "1.0.0",
+  "main": "index.js",
+  "peerDependencies": {
+    "expo": "*",
+    "expo-modules-core": "*"
+  }
+}

@@ -11,8 +11,10 @@ export default function OnboardingLayout() {
       <Stack.Screen name="drink-current" />
       <Stack.Screen name="goal" />
       <Stack.Screen name="notifications" />
-      <Stack.Screen name="widget" />
-      <Stack.Screen name="offer" />
+      <Stack.Screen name="notify-permission" />
+      <Stack.Screen name="trial-step1" options={{ gestureEnabled: false }} />
+      <Stack.Screen name="trial-step2" options={{ gestureEnabled: false }} />
+      <Stack.Screen name="trial-step3" options={{ gestureEnabled: false }} />
     </Stack>
   );
 }

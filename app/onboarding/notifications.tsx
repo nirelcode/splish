@@ -187,8 +187,7 @@ export default function NotificationsScreen() {
 
   const handleNext = () => {
     setNotifications({ start: startTime, end: endTime, count });
-    finishOnboarding();
-    router.push('/onboarding/widget');
+    router.push('/onboarding/notify-permission');
   };
 
   const Row = ({ label, value, onPress }: { label: string; value: string; onPress: () => void }) => (
@@ -355,7 +354,7 @@ export default function NotificationsScreen() {
           activeOpacity={0.85}
         >
           <Text style={{ fontFamily: FontFamily.extrabold, fontSize: FontSize.lg, color: Colors.white }}>
-            Let's Splash! 💧
+            Next
           </Text>
         </TouchableOpacity>
       </View>

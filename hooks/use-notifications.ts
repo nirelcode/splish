@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import * as Notifications from 'expo-notifications';
-import { Platform } from 'react-native';
+import { Platform, Alert } from 'react-native';
 import { useWaterStore } from '@/store/useWaterStore';
 
 Notifications.setNotificationHandler({
@@ -21,6 +21,8 @@ const MESSAGES = [
   { title: 'Hydration check 💧', body: 'How are you tracking today?' },
 ];
 
+const HARD_MODE_DELAY_MS = 10 * 60 * 1000; // 10 minutes
+
 function timeToMinutes(t: { hour: number; minute: number; period: 'AM' | 'PM' }): number {
   let h = t.hour % 12;
   if (t.period === 'PM') h += 12;
@@ -32,7 +34,15 @@ async function requestPermission(): Promise<boolean> {
   const { status } = await Notifications.getPermissionsAsync();
   if (status === 'granted') return true;
   const { status: newStatus } = await Notifications.requestPermissionsAsync();
-  return newStatus === 'granted';
+  if (newStatus !== 'granted') {
+    Alert.alert(
+      'Notifications disabled',
+      'To receive hydration reminders, enable notifications for Splish in your device Settings.',
+      [{ text: 'OK' }]
+    );
+    return false;
+  }
+  return true;
 }
 
 async function scheduleNotifications(
@@ -40,6 +50,8 @@ async function scheduleNotifications(
   end:   { hour: number; minute: number; period: 'AM' | 'PM' },
   count: number,
 ) {
+  if (Platform.OS === 'web') return;
+  if (typeof Notifications.cancelAllScheduledNotificationsAsync !== 'function') return;
   await Notifications.cancelAllScheduledNotificationsAsync();
 
   const granted = await requestPermission();
@@ -79,4 +91,38 @@ export function useScheduleNotifications() {
     if (!onboardingDone) return;
     scheduleNotifications(notifStart, notifEnd, notifCount);
   }, [onboardingDone, notifStart, notifEnd, notifCount]);
+}
+
+// ── Hard Mode: listen for notifications, start 10-min timer ──────────────────
+export function useHardModeNotificationListener() {
+  const hardMode = useWaterStore((s) => s.hardMode ?? false);
+  const triggerHardModePending = useWaterStore((s) => s.triggerHardModePending);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!hardMode) return;
+
+    // Fires when a notification is received while app is in foreground
+    const foregroundSub = Notifications.addNotificationReceivedListener(() => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {
+        // If still no drink logged after 10 min, activate hard mode lock
+        triggerHardModePending();
+      }, HARD_MODE_DELAY_MS);
+    });
+
+    // Fires when user taps a notification (app was in background)
+    const responseSub = Notifications.addNotificationResponseReceivedListener(() => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {
+        triggerHardModePending();
+      }, HARD_MODE_DELAY_MS);
+    });
+
+    return () => {
+      foregroundSub.remove();
+      responseSub.remove();
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [hardMode, triggerHardModePending]);
 }

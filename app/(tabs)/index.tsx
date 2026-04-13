@@ -1,4 +1,4 @@
-import { View, Text, Image, TouchableOpacity, useWindowDimensions, AppState } from 'react-native';
+import { View, Text, Image, TouchableOpacity, useWindowDimensions, AppState, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -17,22 +17,101 @@ const VIDEO_H = Math.round(VIDEO_W * (720 / 1280));
 const CROP_TOP = 60;
 const CROP_BOT = 180;
 const VISIBLE_H = VIDEO_H - CROP_TOP - CROP_BOT;
+const VIDEO_Y_OFFSET = -40; // Shifts the video up globally
 
-const BG_TOP = '#fff9ef';
+const THEME_STYLES = {
+  ocean: {
+    bgTop: '#f3efe2',
+    skyColors: ['#7ec8e3', '#b8e4f9', '#d8f0fb', '#f3efe2'],
+  },
+  sunset: {
+    bgTop: '#FDF6EC',
+    skyColors: ['#FF512F', '#F09819', '#FAD961', '#FDF6EC'],
+  },
+  forest: {
+    bgTop: '#F0F7EE',
+    skyColors: ['#52B788', '#8FDBB9', '#C8EEDB', '#F0F7EE'],
+  },
+  midnight: {
+    bgTop: '#F5F0FF',
+    skyColors: ['#1A1A2E', '#4B3F72', '#7B5EA7', '#F5F0FF'],
+  },
+  peach: {
+    bgTop: '#FFF5F0',
+    skyColors: ['#E8927C', '#F3B4A4', '#FCD6CD', '#FFF5F0'],
+  },
+  arctic: {
+    bgTop: '#EAF4FB',
+    skyColors: ['#0A3D62', '#60A3D9', '#A1CDF1', '#EAF4FB'],
+  }
+};
+
 const BG_BOTTOM = '#65b0d7';
 const TRACK_H = 200;
-
-const VIDEO_SOURCE = require('@/assets/videos/Water_droplet_character.mp4');
 
 const WAVE_H = 40;
 const WAVE_AMP = 14;
 const MIN_WATER_H = 130;
 
+const SKIN_ASSETS = {
+  default: {
+    video: require('@/assets/videos/Water_droplet_character.mp4'),
+    family: require('@/assets/images/splish-family.png'),
+    familyGoal: require('@/assets/images/splish-family-goal.png'),
+    goal: require('@/assets/images/classic-goal.png'),
+    familyWidth: 700,
+    familyHeight: 600,
+    familyTop: -640,
+  },
+  snorkel: {
+    video: require('@/assets/videos/Water_droplet_character.mp4'), 
+    family: require('@/assets/images/splish-family.png'), 
+    familyGoal: require('@/assets/images/splish-family-goal.png'),
+    goal: require('@/assets/images/splish-goal.png'), // The snorkel character
+    familyWidth: 700,
+    familyHeight: 600,
+    familyTop: -640,
+  },
+  pirate: {
+    video: require('@/assets/videos/pirate_video.mp4'),
+    family: require('@/assets/images/pirate-family.png'),
+    familyGoal: require('@/assets/images/pirate-family-goal.png'),
+    goal: require('@/assets/images/pirate-goal.png'),
+    familyWidth: 700,
+    familyHeight: 600,
+    familyTop: -700, // Fine-tuning position downwards
+  },
+  unicorn: {
+    video: require('@/assets/videos/unicorn_video.mp4'),
+    family: require('@/assets/images/unicorn-family.png'),
+    familyGoal: require('@/assets/images/unicorn-family-goal.png'),
+    goal: require('@/assets/images/unicorn-goal.png'),
+    familyWidth: 700,
+    familyHeight: 600,
+    familyTop: -640,
+  },
+  none: {
+    video: null,
+    family: require('@/assets/images/splish-family-goal.png'),
+    familyGoal: require('@/assets/images/splish-family-goal.png'),
+    goal: null,
+    familyWidth: 700,
+    familyHeight: 600,
+    familyTop: -640,
+  }
+};
+
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const [sheetVisible, setSheetVisible] = useState(false);
-  const [skyDismissed, setSkyDismissed] = useState(false);
+  const skyDismissed = useWaterStore((s) => s.skyDismissed);
+  const setSkyDismissed = useWaterStore((s) => s.setSkyDismissed);
+  const skin = useWaterStore((s) => s.skin || 'default');
+  const themeId = useWaterStore((s) => s.theme || 'ocean');
+  const showMinusButton = useWaterStore((s) => s.showMinusButton ?? false);
+  const theme = THEME_STYLES[themeId as keyof typeof THEME_STYLES] || THEME_STYLES.ocean;
+  const assets = SKIN_ASSETS[skin as keyof typeof SKIN_ASSETS] || SKIN_ASSETS.default;
   const router = useRouter();
 
   const { todayMl, goal, pct } = useProgress();
@@ -42,35 +121,7 @@ export default function HomeScreen() {
   const PROGRESS = pct; // capped at 1
   const overGoal = todayMl > goal; // true the moment they exceed the target
 
-  // Delay hiding video/gradient until the over-goal rise animation finishes
-  const OVER_GOAL_DURATION = 4000; // ms — must match the withTiming duration below
-  const [videoHidden, setVideoHidden] = useState(false);
-  useEffect(() => {
-    if (overGoal) {
-      const t = setTimeout(() => setVideoHidden(true), OVER_GOAL_DURATION);
-      return () => clearTimeout(t);
-    } else {
-      setVideoHidden(false);
-      setSkyDismissed(false); // Reset so character hides and flow can trigger again
-      pullY.value = withSpring(0, { damping: 18, stiffness: 120 });
-    }
-  }, [overGoal]);
-
-  // After video hides: slowly reveal sky (stays open), settle water back to 100%
-  useEffect(() => {
-    if (!videoHidden) return;
-    pullY.value = withTiming(REVEAL_H, { duration: 3500, easing: Easing.out(Easing.cubic) });
-    displayProgress.value = withTiming(1.0, { duration: 2500, easing: Easing.out(Easing.cubic) });
-  }, [videoHidden]);
-
-  // Keep height in a shared value so Reanimated worklets react to resize
-  const windowHeight = useSharedValue(height);
-  useEffect(() => { windowHeight.value = height; }, [height]);
-
-  // Measured height of the area below the nav (cream + water combined)
-  const contentH = useSharedValue(0);
-
-  const goalObjectY = useSharedValue(-height - 800); // start way above screen
+  const goalObjectY = useSharedValue(skyDismissed ? 0 : -height - 800); // start way above screen unless already dismissed
   const goalObjectBobY = useSharedValue(0);
   useEffect(() => {
     goalObjectBobY.value = withRepeat(
@@ -82,8 +133,41 @@ export default function HomeScreen() {
     transform: [{ translateY: goalObjectY.value }, { translateY: goalObjectBobY.value }]
   }));
 
+  // Delay hiding video/gradient until the over-goal rise animation finishes
+  const OVER_GOAL_DURATION = 4000; // ms — must match the withTiming duration below
+  const [videoHidden, setVideoHidden] = useState(skyDismissed);
+  useEffect(() => {
+    if (overGoal) {
+      if (skyDismissed) {
+        setVideoHidden(true);
+        return; // already dismissed today
+      }
+      const t = setTimeout(() => setVideoHidden(true), OVER_GOAL_DURATION);
+      return () => clearTimeout(t);
+    } else {
+      setVideoHidden(false);
+      setSkyDismissed(false); // Reset so character hides and flow can trigger again
+      pullY.value = withSpring(0, { damping: 18, stiffness: 120 });
+      goalObjectY.value = -height - 800; // Reset position so it falls again next time
+    }
+  }, [overGoal]);
+
+  // After video hides: slowly reveal sky (stays open), settle water back to 100%
+  useEffect(() => {
+    if (!videoHidden || skyDismissed) return;
+    pullY.value = withTiming(REVEAL_H, { duration: 3500, easing: Easing.out(Easing.cubic) });
+    displayProgress.value = withTiming(1.0, { duration: 2500, easing: Easing.out(Easing.cubic) });
+  }, [videoHidden, skyDismissed]);
+
+  // Keep height in a shared value so Reanimated worklets react to resize
+  const windowHeight = useSharedValue(height);
+  useEffect(() => { windowHeight.value = height; }, [height]);
+
+  // Measured height of the area below the nav (cream + water combined)
+  const contentH = useSharedValue(0);
+
   // Water bg rises to 110%, video/gradient rise to 130%
-  const targetProgress = overGoal ? 1.1 : PROGRESS;
+  const targetProgress = overGoal ? (skyDismissed ? 1.0 : 1.1) : PROGRESS;
   const displayProgress = useSharedValue(targetProgress);
   // Extra upward offset for video/gradient to reach 130% while water stays at 110%
   const videoExtraY = useSharedValue(0);
@@ -238,29 +322,41 @@ export default function HomeScreen() {
   const wave2Style = useAnimatedStyle(() => ({ transform: [{ translateX: waveX2.value }] }));
 
   // Video player
-  const player = useVideoPlayer(VIDEO_SOURCE, (p) => {
+  const [videoReady, setVideoReady] = useState(false);
+  const player = useVideoPlayer(assets.video || SKIN_ASSETS.default.video, (p) => {
     p.loop = true;
     p.muted = true;
     p.playbackRate = 1.0;
+    p.play();
   });
 
+  // Hot swap video dynamically if skin changes
   useEffect(() => {
-    let duration = 0;
-    let scheduled = false;
-    const loadSub = player.addListener('sourceLoad', (e) => { duration = e.duration; });
+    try {
+      if (assets.video) {
+        setVideoReady(false);
+        player.replace(assets.video);
+      } else {
+        player.pause();
+        setVideoReady(false);
+      }
+    } catch { }
+  }, [assets.video, player]);
+
+  useEffect(() => {
     const statusSub = player.addListener('statusChange', ({ status }) => {
-      if (status === 'readyToPlay' && !player.playing) player.play();
-    });
-    player.timeUpdateEventInterval = 0.05;
-    const timeSub = player.addListener('timeUpdate', ({ currentTime }) => {
-      if (duration > 0 && currentTime >= duration - 0.4 && !scheduled) {
-        scheduled = true;
-        player.replay();
-        setTimeout(() => { scheduled = false; }, 800);
+      if (status === 'readyToPlay') {
+        setVideoReady(true);
+        if (!player.playing) player.play();
+      } else {
+        setVideoReady(false);
       }
     });
-    if (player.status === 'readyToPlay') player.play();
-    return () => { loadSub.remove(); statusSub.remove(); timeSub.remove(); };
+    if (player.status === 'readyToPlay') {
+      setVideoReady(true);
+      player.play();
+    }
+    return () => { statusSub.remove(); };
   }, [player]);
 
   useFocusEffect(useCallback(() => {
@@ -280,16 +376,16 @@ export default function HomeScreen() {
     <View style={{ flex: 1, overflow: 'hidden' }}>
 
       {/* ── MAIN SCREEN (slides down on pull) ── */}
-      <Animated.View style={[{ flex: 1, backgroundColor: BG_TOP }, pullStyle]}>
+      <Animated.View style={[{ flex: 1, backgroundColor: theme.bgTop }, pullStyle]}>
 
         {/* Sky gradient — travels with screen and image */}
         <LinearGradient
-          colors={['#7ec8e3', '#b8e4f9', '#d8f0fb', BG_TOP]}
+          colors={theme.skyColors}
           style={{ position: 'absolute', top: -REVEAL_H, left: 0, right: 0, height: REVEAL_H }}
         />
 
         {/* Family image — tap to dismiss sky when goal reach celebration is done */}
-        <Animated.View style={[{ position: 'absolute', top: -640, alignSelf: 'center', width: 700, height: 600 }, familyBobStyle]} pointerEvents={videoHidden && !skyDismissed ? "auto" : "none"}>
+        <Animated.View style={[{ position: 'absolute', top: assets.familyTop, alignSelf: 'center', width: assets.familyWidth, height: assets.familyHeight }, familyBobStyle]} pointerEvents={videoHidden && !skyDismissed ? "auto" : "none"}>
           <TouchableOpacity
             activeOpacity={0.9}
             style={{ width: '100%', height: '100%' }}
@@ -297,22 +393,20 @@ export default function HomeScreen() {
               if (skyDismissed) return;
               setSkyDismissed(true);
               pullY.value = withTiming(0, { duration: 1500, easing: Easing.out(Easing.cubic) });
-              
-              // Drop object slowly and smoothly without bouncing
-              setTimeout(() => {
-                goalObjectY.value = withTiming(0, { duration: 1400, easing: Easing.out(Easing.cubic) });
-              }, 400); // starts falling mid-close
+              // Fall animation is triggered by Image onLoad once the goal asset is ready
             }}
           >
             <Image
-              source={require('@/assets/images/splish-family.png')}
+              source={assets.family}
               style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: videoHidden && !skyDismissed ? 0 : 1 }}
               resizeMode="contain"
+              onError={() => {}}
             />
             <Image
-              source={require('@/assets/images/splish-family-goal.png')}
+              source={assets.familyGoal}
               style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: videoHidden && !skyDismissed ? 1 : 0 }}
               resizeMode="contain"
+              onError={() => {}}
             />
           </TouchableOpacity>
         </Animated.View>
@@ -369,29 +463,58 @@ export default function HomeScreen() {
               <Animated.View style={[{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }, videoExtraStyle]} pointerEvents="none">
                 <View style={{
                   position: 'absolute',
-                  top: -(VISIBLE_H / 2),
+                  top: -(VISIBLE_H / 2) + VIDEO_Y_OFFSET,
                   left: 0, right: 0,
                   height: VISIBLE_H,
                   overflow: 'hidden',
                 }}>
-                  <VideoView
-                    player={player}
-                    style={{
-                      position: 'absolute',
-                      top: -CROP_TOP,
-                      width: VIDEO_W,
-                      height: VIDEO_H,
-                      left: (width - VIDEO_W) / 2,
-                    }}
-                    contentFit="fill"
-                    nativeControls={false}
-                  />
+                  {!!assets.video && (
+                    <>
+                      <VideoView
+                        player={player}
+                        style={{
+                          position: 'absolute',
+                          top: -CROP_TOP,
+                          width: VIDEO_W,
+                          height: VIDEO_H,
+                          left: (width - VIDEO_W) / 2,
+                          opacity: videoReady ? 1 : 0,
+                        }}
+                        contentFit="fill"
+                        nativeControls={false}
+                      />
+                      {!videoReady && (
+                        <View style={{
+                          position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                          alignItems: 'center', justifyContent: 'center',
+                        }}>
+                          <ActivityIndicator size="large" color="rgba(255,255,255,0.6)" />
+                        </View>
+                      )}
+                    </>
+                  )}
                 </View>
 
-                {/* TODO: when animating back to 100%, show gradient again by restoring this outside the conditional */}
+                {/* Top fade — blends the top video edge smoothly into the theme background */}
                 <Svg
                   width={width} height={100}
-                  style={{ position: 'absolute', top: VISIBLE_H / 2 - 60, left: 0 }}
+                  style={{ position: 'absolute', top: -(VISIBLE_H / 2) - 1 + VIDEO_Y_OFFSET, left: 0 }}
+                  pointerEvents="none"
+                >
+                  <Defs>
+                    <SvgLinearGradient id="fadeT" x1="0" y1="0" x2="0" y2="1">
+                      <Stop offset="0" stopColor={theme.bgTop} stopOpacity="1" />
+                      <Stop offset="0.1" stopColor={theme.bgTop} stopOpacity="1" />
+                      <Stop offset="1" stopColor={theme.bgTop} stopOpacity="0" />
+                    </SvgLinearGradient>
+                  </Defs>
+                  <Rect x="0" y="0" width={width} height={100} fill="url(#fadeT)" />
+                </Svg>
+
+                {/* Bottom fade — blends the bottom video edge into the water */}
+                <Svg
+                  width={width} height={100}
+                  style={{ position: 'absolute', top: VISIBLE_H / 2 - 60 + VIDEO_Y_OFFSET, left: 0 }}
                   pointerEvents="none"
                 >
                   <Defs>
@@ -406,23 +529,35 @@ export default function HomeScreen() {
             )}
 
             {/* Dropped Goal Character (replaces video band after sky closes) */}
-            {skyDismissed && (
-               <Animated.View style={[{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }, goalObjectStyle]} pointerEvents="none">
-                 <View style={{
-                    position: 'absolute',
-                    top: -(VISIBLE_H / 2) + 180, /* pushed another bit lower on the screen */
-                    left: 0, right: 0,
-                    height: VISIBLE_H + 180,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                 }}>
-                    <Image
-                       source={require('@/assets/images/splish-goal.png')}
-                       style={{ width: 580, height: 580 }} /* made significantly larger */
-                       resizeMode="contain"
-                    />
-                 </View>
-               </Animated.View>
+            {skyDismissed && assets.goal && (
+              <Animated.View style={[{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }, goalObjectStyle]} pointerEvents="none">
+                <View style={{
+                  position: 'absolute',
+                  top: -(VISIBLE_H / 2) + 180,
+                  left: 0, right: 0,
+                  height: VISIBLE_H + 180,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}>
+                  <Image
+                    source={assets.goal}
+                    style={{ width: 580, height: 580 }}
+                    resizeMode="contain"
+                    onLoad={() => {
+                      // Start fall animation only once the image is actually loaded
+                      if (goalObjectY.value < 0) {
+                        goalObjectY.value = withTiming(0, { duration: 1400, easing: Easing.out(Easing.cubic) });
+                      }
+                    }}
+                    onError={() => {
+                      // Fallback: still trigger the animation even if image fails
+                      if (goalObjectY.value < 0) {
+                        goalObjectY.value = withTiming(0, { duration: 1400, easing: Easing.out(Easing.cubic) });
+                      }
+                    }}
+                  />
+                </View>
+              </Animated.View>
             )}
 
           </Animated.View>
@@ -445,7 +580,7 @@ export default function HomeScreen() {
           <Text style={{ fontSize: 28, fontFamily: FontFamily.bold, color: 'rgba(255,255,255,0.55)' }}> / {TOTAL_GOAL.toFixed(1)} L</Text>
         </Text>
         <Text style={{ fontFamily: FontFamily.semibold, fontSize: FontSize.sm, color: 'rgba(255,255,255,0.7)' }}>
-          {PROGRESS >= 1 ? '🎉 Goal reached!' : `${Math.round(PROGRESS * 100)}% · ${((TOTAL_GOAL - CURRENT) * 1000).toFixed(0)} ml to go`}
+          {PROGRESS >= 1 ? 'Goal reached!' : `${Math.round(PROGRESS * 100)}% · ${((TOTAL_GOAL - CURRENT) * 1000).toFixed(0)} ml to go`}
         </Text>
       </View>
 
@@ -491,59 +626,61 @@ export default function HomeScreen() {
 
       {/* ── TOP NAV — fixed to screen, drag here to reveal sky ── */}
       <GestureDetector gesture={pullGesture}>
-      <View style={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        paddingTop: insets.top + 8,
-        paddingHorizontal: Spacing.xl,
-        paddingBottom: 8,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        zIndex: 50,
-      }}>
-        <Animated.View style={[{
-          flexDirection: 'row', alignItems: 'center', gap: 6,
-          backgroundColor: Colors.orangeLight,
-          borderWidth: 1.5, borderColor: Colors.orange,
-          borderRadius: Radius.pill, paddingHorizontal: 16, paddingVertical: 6,
-        }, streakBadgeStyle]}>
-          <Text style={{ fontSize: 20 }}>🔥</Text>
-          <Text style={{ fontFamily: FontFamily.black, fontSize: 18, color: '#000000' }}>{streak}</Text>
-        </Animated.View>
+        <View style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          paddingTop: insets.top + 8,
+          paddingHorizontal: Spacing.xl,
+          paddingBottom: 8,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          zIndex: 50,
+        }}>
+          <Animated.View style={[{
+            flexDirection: 'row', alignItems: 'center', gap: 6,
+            backgroundColor: Colors.orangeLight,
+            borderWidth: 1.5, borderColor: Colors.orange,
+            borderRadius: Radius.pill, paddingHorizontal: 16, paddingVertical: 6,
+          }, streakBadgeStyle]}>
+            <Text style={{ fontSize: 20 }}>🔥</Text>
+            <Text style={{ fontFamily: FontFamily.black, fontSize: 18, color: '#000000' }}>{streak}</Text>
+          </Animated.View>
 
-        <TouchableOpacity onPress={() => router.push('/shop')} style={{ alignItems: 'center', justifyContent: 'center' }}>
-          <Feather name="shopping-cart" size={28} color={Colors.navyDark} />
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity onPress={() => router.push('/shop')} style={{ alignItems: 'center', justifyContent: 'center' }}>
+            <Feather name="shopping-cart" size={28} color={Colors.navyDark} />
+          </TouchableOpacity>
+        </View>
       </GestureDetector>
 
 
       {/* ── DRINK SHEET ── */}
       <DrinkSheet visible={sheetVisible} onClose={() => setSheetVisible(false)} />
 
-      {/* ── UNDO BUTTON (fixed to screen, outside pullable view) ── */}
-      <TouchableOpacity
-        onPress={() => useWaterStore.getState().removeLast()}
-        style={{
-          position: 'absolute',
-          right: Spacing.xl,
-          top: '55%',
-          backgroundColor: Colors.navy,
-          borderRadius: Radius.pill,
-          width: 54,
-          height: 54,
-          alignItems: 'center',
-          justifyContent: 'center',
-          boxShadow: `0 4px 0px ${Colors.navyDark}`,
-          zIndex: 100,
-        }}
-        activeOpacity={0.85}
-      >
-        <Text style={{ fontFamily: FontFamily.extrabold, fontSize: 24, color: Colors.white }}>−</Text>
-      </TouchableOpacity>
+      {/* ── MINUS BUTTON (dev toggle in Settings → Developer) ── */}
+      {showMinusButton && (
+        <TouchableOpacity
+          onPress={() => useWaterStore.getState().removeLast()}
+          style={{
+            position: 'absolute',
+            right: Spacing.xl,
+            top: '55%',
+            backgroundColor: Colors.navy,
+            borderRadius: Radius.pill,
+            width: 54,
+            height: 54,
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: `0 4px 0px ${Colors.navyDark}`,
+            zIndex: 100,
+          }}
+          activeOpacity={0.85}
+        >
+          <Text style={{ fontFamily: FontFamily.extrabold, fontSize: 24, color: Colors.white }}>−</Text>
+        </TouchableOpacity>
+      )}
 
       {/* ── CONGRATS OVERLAY (fades in then out during goal animation) ── */}
       {isCelebrating && (

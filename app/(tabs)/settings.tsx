@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Modal, Image } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Modal, Image, Switch, Alert, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, FontFamily, FontSize, Radius, Spacing } from '@/constants/theme';
 import { useWaterStore, calcGoal } from '@/store/useWaterStore';
+import { HardModeLockScreen } from '@/components/hard-mode/lock-screen';
+import { HardModeSetupWizard } from '@/components/hard-mode/setup-wizard';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Period = 'AM' | 'PM';
@@ -366,6 +368,39 @@ export default function SettingsScreen() {
   const [ageModal, setAgeModal]         = useState(false);
   const [goalModal, setGoalModal]       = useState(false);
   const [notifModal, setNotifModal]     = useState(false);
+  const [lockPreview, setLockPreview]   = useState(false);
+  const [showWizard, setShowWizard]     = useState(false);
+
+  const hardMode = useWaterStore((s) => s.hardMode ?? false);
+  const hardModeSetupDone = useWaterStore((s) => s.hardModeSetupDone ?? false);
+  const setHardMode = useWaterStore((s) => s.setHardMode);
+  const setHardModeSetupDone = useWaterStore((s) => s.setHardModeSetupDone);
+  const showMinusButton = useWaterStore((s) => s.showMinusButton ?? false);
+  const setShowMinusButton = useWaterStore((s) => s.setShowMinusButton);
+
+  const handleHardModeToggle = (val: boolean) => {
+    if (val && Platform.OS === 'ios') {
+      Alert.alert('Coming soon', 'Hard Mode will be available on iPhone in a future update.');
+      return;
+    }
+    if (val && !hardModeSetupDone) {
+      // First time enabling — show the wizard
+      setShowWizard(true);
+    } else {
+      setHardMode(val);
+    }
+  };
+
+  const handleWizardComplete = () => {
+    setShowWizard(false);
+    setHardMode(true);
+    setHardModeSetupDone(true);
+  };
+
+  const handleWizardCancel = () => {
+    setShowWizard(false);
+    // Leave hardMode off — user cancelled setup
+  };
 
   const goalL = (dailyGoalMl / 1000).toFixed(1);
 
@@ -424,6 +459,42 @@ export default function SettingsScreen() {
         {/* Notifications */}
         <SettingsCard>
           <SettingsRow icon="notifications-outline" label="Notifications" onPress={() => setNotifModal(true)} />
+          <Divider />
+          <SettingsRow icon="grid-outline" label="Install widgets" onPress={() => router.push('/widgets')} />
+        </SettingsCard>
+
+        {/* Hard Mode */}
+        <Text style={{ fontFamily: FontFamily.black, fontSize: FontSize.xxl, color: Colors.navy, marginBottom: Spacing.sm, marginTop: Spacing.xs }}>
+          Hard Mode ⚡
+        </Text>
+        <SettingsCard>
+          <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 15, paddingHorizontal: Spacing.md }}>
+            <Ionicons name="lock-closed-outline" size={22} color={hardMode ? Colors.orange : Colors.textSecondary} style={{ width: 32 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontFamily: FontFamily.bold, fontSize: FontSize.md, color: Colors.text }}>
+                Lock screen on reminder
+              </Text>
+              <Text style={{ fontFamily: FontFamily.regular, fontSize: FontSize.xs, color: Colors.textSecondary, marginTop: 2 }}>
+                {Platform.OS === 'ios' ? 'Coming soon on iPhone' : 'Photo-verify your drink to unlock'}
+              </Text>
+            </View>
+            <Switch
+              value={Boolean(hardMode)}
+              onValueChange={handleHardModeToggle}
+              trackColor={{ false: Colors.border, true: Colors.orange }}
+              thumbColor={Colors.white}
+            />
+          </View>
+          {hardMode && (
+            <>
+              <Divider />
+              <SettingsRow
+                icon="eye-outline"
+                label="Preview lock screen"
+                onPress={() => setLockPreview(true)}
+              />
+            </>
+          )}
         </SettingsCard>
 
         {/* About */}
@@ -435,8 +506,29 @@ export default function SettingsScreen() {
           <SettingsRow icon="information-circle-outline" label="Version 1.0.0" />
         </SettingsCard>
 
-        {/* Dev */}
+        {/* Developer */}
+        <Text style={{ fontFamily: FontFamily.black, fontSize: FontSize.xxl, color: Colors.navy, marginBottom: Spacing.sm, marginTop: Spacing.xs }}>
+          Developer 🛠
+        </Text>
         <SettingsCard>
+          <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 15, paddingHorizontal: Spacing.md }}>
+            <Ionicons name="remove-circle-outline" size={22} color={Colors.textSecondary} style={{ width: 32 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontFamily: FontFamily.bold, fontSize: FontSize.md, color: Colors.text }}>
+                Show minus button
+              </Text>
+              <Text style={{ fontFamily: FontFamily.regular, fontSize: FontSize.xs, color: Colors.textSecondary, marginTop: 2 }}>
+                Show the − button on the home screen to undo drinks
+              </Text>
+            </View>
+            <Switch
+              value={showMinusButton}
+              onValueChange={setShowMinusButton}
+              trackColor={{ false: Colors.border, true: Colors.orange }}
+              thumbColor={Colors.white}
+            />
+          </View>
+          <Divider />
           <SettingsRow icon="refresh-outline" label="Redo onboarding" onPress={() => { reset(); router.replace('/onboarding/gender'); }} />
           <Divider />
           <SettingsRow icon="trash-outline" label="Reset all data" onPress={handleReset} danger />
@@ -476,6 +568,17 @@ export default function SettingsScreen() {
       />
 
       <NotifModal visible={notifModal} onClose={() => setNotifModal(false)} />
+
+      <HardModeLockScreen
+        visible={lockPreview}
+        onSnooze={() => setLockPreview(false)}
+      />
+
+      <HardModeSetupWizard
+        visible={showWizard}
+        onComplete={handleWizardComplete}
+        onCancel={handleWizardCancel}
+      />
     </ScrollView>
   );
 }

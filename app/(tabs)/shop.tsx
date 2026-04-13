@@ -1,20 +1,22 @@
 import { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Image, ImageSourcePropType } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Image, ImageSourcePropType, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, FontFamily, FontSize, Radius, Spacing } from '@/constants/theme';
 import { useWaterStore } from '@/store/useWaterStore';
+import { LinearGradient } from 'expo-linear-gradient';
+import { usePremium } from '@/hooks/use-premium';
 
 // ── Data ──────────────────────────────────────────────────────────────────────
 
-type Status = 'owned' | 'locked';
+type Status = 'owned' | 'locked' | 'coming_soon';
 
 interface Theme {
   id: string; name: string; swatches: string[]; status: Status;
 }
 interface Skin {
-  id: string; name: string; image: ImageSourcePropType; status: Status;
+  id: string; name: string; image: ImageSourcePropType; status: Status; scale?: number;
 }
 interface Achievement {
   id: string; emoji: string; name: string; desc: string;
@@ -23,20 +25,23 @@ interface Achievement {
 
 const THEMES: Theme[] = [
   { id: 'ocean',    name: 'Ocean',    swatches: ['#152D5C', '#7EC5E3', '#FFF8F0'], status: 'owned'  },
-  { id: 'sunset',   name: 'Sunset',   swatches: ['#C0392B', '#F39C12', '#FDF6EC'], status: 'locked' },
-  { id: 'forest',   name: 'Forest',   swatches: ['#1A5C38', '#52B788', '#F0F7EE'], status: 'locked' },
-  { id: 'midnight', name: 'Midnight', swatches: ['#1A1A2E', '#7B5EA7', '#F5F0FF'], status: 'locked' },
-  { id: 'peach',    name: 'Peach',    swatches: ['#8B3A3A', '#E8927C', '#FFF5F0'], status: 'locked' },
-  { id: 'arctic',   name: 'Arctic',   swatches: ['#0A3D62', '#60A3D9', '#EAF4FB'], status: 'locked' },
+  { id: 'sunset',   name: 'Sunset',   swatches: ['#C0392B', '#F39C12', '#FDF6EC'], status: 'owned' },
+  { id: 'forest',   name: 'Forest',   swatches: ['#1A5C38', '#52B788', '#F0F7EE'], status: 'owned' },
+  { id: 'midnight', name: 'Midnight', swatches: ['#1A1A2E', '#7B5EA7', '#F5F0FF'], status: 'owned' },
+  { id: 'peach',    name: 'Peach',    swatches: ['#8B3A3A', '#E8927C', '#FFF5F0'], status: 'owned' },
+  { id: 'arctic',   name: 'Arctic',   swatches: ['#0A3D62', '#60A3D9', '#EAF4FB'], status: 'owned' },
 ];
 
 const SKINS: Skin[] = [
-  { id: 'default',   name: 'Classic',   image: require('@/assets/images/splish-default.png'),  status: 'owned'  },
-  { id: 'goal',      name: 'Glowing',   image: require('@/assets/images/splish-goal.png'),     status: 'owned'  },
-  { id: 'lifering',  name: 'Lifeguard', image: require('@/assets/images/splish-lifering.png'), status: 'locked' },
-  { id: 'astronaut', name: 'Astronaut', image: require('@/assets/images/splish-default.png'),  status: 'locked' },
-  { id: 'chef',      name: 'Chef',      image: require('@/assets/images/splish-default.png'),  status: 'locked' },
-  { id: 'ninja',     name: 'Ninja',     image: require('@/assets/images/splish-default.png'),  status: 'locked' },
+  { id: 'none',      name: 'None',      image: require('@/assets/images/none-icon.png'), status: 'owned'  },
+  { id: 'default',   name: 'Classic',   image: require('@/assets/images/classic-goal.png'),  status: 'owned', scale: 2.2  },
+  { id: 'pirate',    name: 'Pirate',    image: require('@/assets/images/pirate-shop-icon.png'), status: 'owned'  },
+  { id: 'snorkel',   name: 'Snorkel',   image: require('@/assets/images/splish-goal.png'),     status: 'owned', scale: 2.2  },
+  { id: 'unicorn',   name: 'Unicorn',   image: require('@/assets/images/unicorn-shop-icon.png'), status: 'owned', scale: 2.5 },
+  { id: 'lifering',  name: 'Lifeguard', image: require('@/assets/images/splish-lifering.png'), status: 'coming_soon' },
+  { id: 'astronaut', name: 'Astronaut', image: require('@/assets/images/splish-default.png'),  status: 'coming_soon' },
+  { id: 'chef',      name: 'Chef',      image: require('@/assets/images/splish-default.png'),  status: 'coming_soon' },
+  { id: 'ninja',     name: 'Ninja',     image: require('@/assets/images/splish-default.png'),  status: 'coming_soon' },
 ];
 
 const ACHIEVEMENTS: Achievement[] = [
@@ -154,6 +159,7 @@ function ThemeCard({ theme, active, onPress }: { theme: Theme; active: boolean; 
         padding: Spacing.md, borderWidth: 2.5,
         borderColor: active ? Colors.orange : 'transparent',
         opacity: locked ? 0.7 : 1,
+        overflow: 'hidden',
       }}
     >
       <View style={{ flexDirection: 'row', gap: 6, marginBottom: Spacing.sm }}>
@@ -183,18 +189,39 @@ function ThemeCard({ theme, active, onPress }: { theme: Theme; active: boolean; 
 
 function SkinCard({ skin, active, onPress }: { skin: Skin; active: boolean; onPress: () => void }) {
   const locked = skin.status === 'locked';
+  const comingSoon = skin.status === 'coming_soon';
+  const isEpic = skin.id === 'pirate' || skin.id === 'unicorn';
   return (
     <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.8}
+      onPress={comingSoon ? undefined : onPress}
+      activeOpacity={comingSoon ? 1 : 0.8}
       style={{
-        flex: 1, backgroundColor: Colors.white, borderRadius: Radius.lg,
-        padding: Spacing.md, alignItems: 'center',
-        borderWidth: 2.5, borderColor: active ? Colors.orange : 'transparent',
+        flex: 1, backgroundColor: comingSoon ? '#F0F4FF' : isEpic ? '#E5E0FF' : Colors.white,
+        borderRadius: Radius.lg, padding: Spacing.md, alignItems: 'center',
+        borderWidth: 2.5, borderColor: active ? Colors.orange : comingSoon ? '#C8D4F0' : 'transparent',
+        overflow: 'hidden',
       }}
     >
+      {/* Coming Soon banner */}
+      {comingSoon && (
+        <View style={{
+          position: 'absolute', top: 8, left: -18, right: -18,
+          backgroundColor: '#6C8ECC', paddingVertical: 3,
+          transform: [{ rotate: '-30deg' }], zIndex: 2,
+          alignItems: 'center',
+        }}>
+          <Text style={{ fontFamily: FontFamily.black, fontSize: 7, color: Colors.white, letterSpacing: 0.5 }}>
+            COMING SOON
+          </Text>
+        </View>
+      )}
+
       <View style={{ width: 80, height: 80, marginBottom: Spacing.sm }}>
-        <Image source={skin.image} style={{ width: 80, height: 80, opacity: locked ? 0.3 : 1 }} resizeMode="contain" />
+        <Image
+          source={skin.image}
+          style={{ width: 80, height: 80, opacity: locked || comingSoon ? 0.25 : 1, transform: [{ scale: skin.scale || 1 }] }}
+          resizeMode="contain"
+        />
         {locked && (
           <View style={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center' }}>
             <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: Colors.navy, alignItems: 'center', justifyContent: 'center' }}>
@@ -203,7 +230,7 @@ function SkinCard({ skin, active, onPress }: { skin: Skin; active: boolean; onPr
           </View>
         )}
       </View>
-      <Text style={{ fontFamily: FontFamily.black, fontSize: FontSize.md, color: Colors.navy, marginBottom: 4 }}>
+      <Text style={{ fontFamily: FontFamily.black, fontSize: FontSize.md, color: comingSoon ? '#8A9BB5' : Colors.navy, marginBottom: 4 }}>
         {skin.name}
       </Text>
       {active ? (
@@ -211,6 +238,8 @@ function SkinCard({ skin, active, onPress }: { skin: Skin; active: boolean; onPr
           <Ionicons name="checkmark-circle" size={14} color={Colors.orange} />
           <Text style={{ fontFamily: FontFamily.bold, fontSize: FontSize.xs, color: Colors.orange }}>Active</Text>
         </View>
+      ) : comingSoon ? (
+        <Text style={{ fontFamily: FontFamily.bold, fontSize: FontSize.xs, color: '#8A9BB5' }}>Soon</Text>
       ) : locked ? (
         <Text style={{ fontFamily: FontFamily.bold, fontSize: FontSize.xs, color: Colors.textMuted }}>Premium</Text>
       ) : (
@@ -280,15 +309,28 @@ export default function ShopScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const storeState = useWaterStore.getState();
+  const { isPremium, loading: premiumLoading, packages } = usePremium();
 
   const [tab, setTab] = useState<'themes' | 'skins' | 'achievements'>('themes');
-  const [activeTheme, setActiveTheme] = useState('ocean');
-  const [activeSkin, setActiveSkin] = useState('default');
+  const activeTheme = useWaterStore((s) => s.theme || 'ocean');
+  const setActiveTheme = useWaterStore((s) => s.setTheme);
 
-  const ownedThemes  = THEMES.filter((t) => t.status === 'owned');
-  const lockedThemes = THEMES.filter((t) => t.status === 'locked');
-  const ownedSkins   = SKINS.filter((s) => s.status === 'owned');
-  const lockedSkins  = SKINS.filter((s) => s.status === 'locked');
+  const activeSkin = useWaterStore((s) => s.skin || 'default');
+  const setActiveSkin = useWaterStore((s) => s.setSkin);
+
+  function handleGetPremium() {
+    Alert.alert('Coming soon', 'In-app purchases will be available very soon!');
+  }
+
+  function handleRestore() {
+    Alert.alert('Coming soon', 'In-app purchases will be available very soon!');
+  }
+
+  const ownedThemes      = THEMES.filter((t) => t.status === 'owned');
+  const lockedThemes     = THEMES.filter((t) => t.status === 'locked');
+  const ownedSkins       = SKINS.filter((s) => s.status === 'owned');
+  const lockedSkins      = SKINS.filter((s) => s.status === 'locked');
+  const comingSoonSkins  = SKINS.filter((s) => s.status === 'coming_soon');
 
   const unlockedAchievements = ACHIEVEMENTS.filter((a) => a.check(storeState));
   const lockedAchievements   = ACHIEVEMENTS.filter((a) => !a.check(storeState));
@@ -321,40 +363,70 @@ export default function ShopScreen() {
           </View>
         </View>
 
-        {/* Premium banner — white card with orange accent */}
-        <TouchableOpacity
-          activeOpacity={0.85}
-          style={{
-            backgroundColor: Colors.white,
+        {/* Premium banner */}
+        {isPremium ? (
+          <View style={{
+            backgroundColor: Colors.orangeLight,
             borderRadius: Radius.lg,
             padding: Spacing.md,
             flexDirection: 'row',
             alignItems: 'center',
-            justifyContent: 'space-between',
+            gap: Spacing.sm,
+            marginBottom: Spacing.lg,
+            borderWidth: 1.5,
+            borderColor: Colors.orange,
+          }}>
+            <Text style={{ fontSize: 22 }}>👑</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontFamily: FontFamily.black, fontSize: FontSize.md, color: Colors.navy }}>Premium Active</Text>
+              <Text style={{ fontFamily: FontFamily.semibold, fontSize: FontSize.xs, color: Colors.textSecondary }}>All content unlocked</Text>
+            </View>
+            <Ionicons name="checkmark-circle" size={24} color={Colors.orange} />
+          </View>
+        ) : (
+          <View style={{
+            backgroundColor: Colors.white,
+            borderRadius: Radius.lg,
+            padding: Spacing.md,
             marginBottom: Spacing.lg,
             borderWidth: 1.5,
             borderColor: Colors.border_cream,
-          }}
-        >
-          <View style={{ gap: 3 }}>
-            <Text style={{ fontFamily: FontFamily.black, fontSize: FontSize.lg, color: Colors.navy }}>
-              Unlock everything 👑
-            </Text>
-            <Text style={{ fontFamily: FontFamily.semibold, fontSize: FontSize.sm, color: Colors.textSecondary }}>
-              All themes, skins & future content
-            </Text>
-          </View>
-          <View style={{
-            backgroundColor: Colors.orange,
-            borderRadius: Radius.pill,
-            paddingHorizontal: Spacing.md,
-            paddingVertical: 8,
+            gap: Spacing.sm,
           }}>
-            <Text style={{ fontFamily: FontFamily.extrabold, fontSize: FontSize.sm, color: Colors.white }}>
-              Get Premium
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ gap: 3, flex: 1 }}>
+                <Text style={{ fontFamily: FontFamily.black, fontSize: FontSize.lg, color: Colors.navy }}>
+                  Unlock everything 👑
+                </Text>
+                <Text style={{ fontFamily: FontFamily.semibold, fontSize: FontSize.sm, color: Colors.textSecondary }}>
+                  All themes, skins & future content
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={handleGetPremium}
+                disabled={premiumLoading}
+                activeOpacity={0.85}
+                style={{
+                  backgroundColor: Colors.orange,
+                  borderRadius: Radius.pill,
+                  paddingHorizontal: Spacing.md,
+                  paddingVertical: 8,
+                  minWidth: 90,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ fontFamily: FontFamily.extrabold, fontSize: FontSize.sm, color: Colors.white }}>
+                  Get Premium
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity onPress={handleRestore}>
+              <Text style={{ fontFamily: FontFamily.semibold, fontSize: FontSize.xs, color: Colors.textMuted, textAlign: 'center' }}>
+                Restore purchases
+              </Text>
+            </TouchableOpacity>
           </View>
-        </TouchableOpacity>
+        )}
 
         {/* Tab selector */}
         <View style={{
@@ -374,12 +446,21 @@ export default function ShopScreen() {
           <>
             <SectionLabel text="Owned" />
             {renderGrid(ownedThemes, (t) => (
-              <ThemeCard key={t.id} theme={t} active={activeTheme === t.id} onPress={() => { if (t.status === 'owned') setActiveTheme(t.id); }} />
+              <ThemeCard key={t.id} theme={t} active={activeTheme === t.id} onPress={() => setActiveTheme(t.id)} />
             ))}
-            <SectionLabel text="Premium" />
-            {renderGrid(lockedThemes, (t) => (
-              <ThemeCard key={t.id} theme={t} active={false} onPress={() => {}} />
-            ))}
+            {lockedThemes.length > 0 && (
+              <>
+                <SectionLabel text={isPremium ? 'Premium — Unlocked' : 'Premium'} />
+                {renderGrid(lockedThemes, (t) => (
+                  <ThemeCard
+                    key={t.id}
+                    theme={{ ...t, status: isPremium ? 'owned' : 'locked' }}
+                    active={activeTheme === t.id}
+                    onPress={() => { if (isPremium) setActiveTheme(t.id); else handleGetPremium(); }}
+                  />
+                ))}
+              </>
+            )}
           </>
         )}
 
@@ -388,12 +469,29 @@ export default function ShopScreen() {
           <>
             <SectionLabel text="Owned" />
             {renderGrid(ownedSkins, (s) => (
-              <SkinCard key={s.id} skin={s} active={activeSkin === s.id} onPress={() => { if (s.status === 'owned') setActiveSkin(s.id); }} />
+              <SkinCard key={s.id} skin={s} active={activeSkin === s.id} onPress={() => setActiveSkin(s.id)} />
             ))}
-            <SectionLabel text="Premium" />
-            {renderGrid(lockedSkins, (s) => (
-              <SkinCard key={s.id} skin={s} active={false} onPress={() => {}} />
-            ))}
+            {lockedSkins.length > 0 && (
+              <>
+                <SectionLabel text={isPremium ? 'Premium — Unlocked' : 'Premium'} />
+                {renderGrid(lockedSkins, (s) => (
+                  <SkinCard
+                    key={s.id}
+                    skin={{ ...s, status: isPremium ? 'owned' : 'locked' }}
+                    active={activeSkin === s.id}
+                    onPress={() => { if (isPremium) setActiveSkin(s.id); else handleGetPremium(); }}
+                  />
+                ))}
+              </>
+            )}
+            {comingSoonSkins.length > 0 && (
+              <>
+                <SectionLabel text="Coming Soon" />
+                {renderGrid(comingSoonSkins, (s) => (
+                  <SkinCard key={s.id} skin={s} active={false} onPress={() => {}} />
+                ))}
+              </>
+            )}
           </>
         )}
 
